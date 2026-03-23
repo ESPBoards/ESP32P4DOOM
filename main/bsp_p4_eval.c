@@ -310,8 +310,8 @@ esp_err_t bsp_sdcard_mount(void) {
   };
   esp_ldo_channel_handle_t sd_ldo_handle = NULL;
   if (esp_ldo_acquire_channel(&ldo_sdc_config, &sd_ldo_handle) != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to acquire LDO for SD Card");
-      return ESP_FAIL;
+    ESP_LOGE(TAG, "Failed to acquire LDO for SD Card");
+    return ESP_FAIL;
   }
 
   sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();

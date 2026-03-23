@@ -28,7 +28,6 @@ The engine features an automatic detection system for game files:
 
 ## Missing Features / To-Do
 The following features are currently missing from this port:
-- **Save and Load Game**
 - **Network** (Multiplayer)
 - **Music**
 

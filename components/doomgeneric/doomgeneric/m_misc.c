@@ -164,6 +164,8 @@ int M_ReadFile(char *name, byte **buffer)
 //
 // The returned value must be freed with Z_Free after use.
 
+extern char doomEsp_savedir[32];
+
 char *M_TempFile(char *s)
 {
     char *tempdir;
@@ -180,8 +182,8 @@ char *M_TempFile(char *s)
     }
 #else
     // In Unix, just use /tmp.
-    // On ESP32 we use current dir.
-    tempdir = ".";
+    // On ESP32 we use absolute directory.
+    tempdir = doomEsp_savedir;
 #endif
 
     return M_StringJoin(tempdir, DIR_SEPARATOR_S, s, NULL);

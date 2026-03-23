@@ -15,8 +15,11 @@
 #include "usb/usb_host.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 static const char *TAG = "DOOM_ESP";
+
+char doomEsp_savedir[32] = "/spiffs";
 
 #define DOOM_W 320
 #define DOOM_H 200
@@ -287,6 +290,8 @@ void doomEsp_Start(bsp_p4_handles_t bsp_handles, uint16_t *frame_buffer) {
   if (bsp_sdcard_mount() == ESP_OK) {
     ESP_LOGI(TAG,
              "SD Card mounted successfully at /sdcard. Searching for WADs...");
+    chdir("/sdcard");
+    strcpy(doomEsp_savedir, "/sdcard");
     FILE *f;
 
     // Check for base IWAD first
@@ -313,6 +318,8 @@ void doomEsp_Start(bsp_p4_handles_t bsp_handles, uint16_t *frame_buffer) {
     ESP_LOGW(
         TAG,
         "No SD card detected (or mount failed). Fallback to internal SPIFFS.");
+    chdir("/spiffs");
+    strcpy(doomEsp_savedir, "/spiffs");
   }
 
   ESP_LOGI(TAG, "Starting DOOM. IWAD: %s, PWAD: %s", iwad_path,

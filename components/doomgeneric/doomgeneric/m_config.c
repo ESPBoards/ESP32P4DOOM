@@ -2040,11 +2040,12 @@ float M_GetFloatVariable(char *name)
 // Get the path to the default configuration dir to use, if NULL
 // is passed to M_SetConfigDir.
 
+extern char doomEsp_savedir[32];
+
 static char *GetDefaultConfigDir(void)
 {
-    char *result = (char *)malloc(2);
-    result[0] = '.';
-    result[1] = '\0';
+    char *result = (char *)malloc(32);
+    strcpy(result, doomEsp_savedir);
 
     return result;
 }
