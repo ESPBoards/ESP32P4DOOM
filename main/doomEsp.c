@@ -1,4 +1,5 @@
 #include "doomEsp.h"
+#include "doomEsp_touch.h"
 #include "doomgeneric.h"
 #include "doomkeys.h"
 #include "driver/ppa.h"
@@ -24,13 +25,12 @@ char doomEsp_savedir[32] = "/spiffs";
 #define DOOM_W 320
 #define DOOM_H 200
 
-// Render DOOM's 320x200 into a 4:3 region centered on the 720x720 panel.
-// 720 wide / 540 tall reproduces DOOM's intended pixel aspect; 90px black bars
-// fill the top and bottom. (Future touch UI: set DOOM_DEST_Y to 0 and use the
-// freed bottom 180px band.)
+// Render DOOM's 320x200 into a top-aligned 4:3 region (720x540, scale 2.25/2.7,
+// which reproduces DOOM's intended pixel aspect). The freed bottom 180px band
+// (y 540..720) holds the on-screen touch controls (see doomEsp_touch.c).
 #define DOOM_DEST_W 720
 #define DOOM_DEST_H 540
-#define DOOM_DEST_Y ((LCD_V_RES - DOOM_DEST_H) / 2) // (720-540)/2 = 90
+#define DOOM_DEST_Y 0
 
 // Buffers
 static uint16_t *doom_rb565;
@@ -114,6 +114,12 @@ static void queue_doom_key(unsigned char key, int pressed) {
     return;
   doom_key_event_t ev = {.pressed = pressed, .key = key};
   xQueueSend(doom_key_queue, &ev, 0);
+}
+
+// Public entry so other input sources (on-screen touch controls) can feed the
+// same key queue the USB keyboard path uses.
+void doomEsp_QueueKey(unsigned char key, int pressed) {
+  queue_doom_key(key, pressed);
 }
 
 // USB HID Host Callback
@@ -297,6 +303,9 @@ void doomEsp_Start(bsp_p4_handles_t bsp_handles, uint16_t *frame_buffer) {
 
   // Initialize Sound Engine
   doomEsp_SoundInit();
+
+  // On-screen touch controls (thumbstick + FIRE/USE/ESC/ENT) in the bottom band.
+  doomEsp_TouchInit(g_bsp_handles.touch_handle, global_frame_buffer);
 
   // 3.5 Initialize SD Card (optional)
   char *iwad_path = "/spiffs/doom1.wad"; // default IWAD
