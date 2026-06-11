@@ -1,6 +1,6 @@
 /**
  * @file bsp_p4_eval.c
- * @brief Detailed implementation to initialize the ESP32-P4-EV kit hardware.
+ * @brief Detailed implementation to initialize the Waveshare ESP32-P4-WIFI6-Touch-LCD-4B hardware.
  */
 
 #include "bsp_p4_eval.h"
@@ -10,7 +10,7 @@
 #include "driver/sdmmc_host.h"
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
-#include "esp_lcd_ek79007.h"
+#include "esp_lcd_st7703.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch_gt911.h"
 #include "esp_log.h"
@@ -19,6 +19,7 @@
 static i2c_master_bus_handle_t s_i2c_bus = NULL;
 static i2s_chan_handle_t s_i2s_tx_chan = NULL;
 static i2s_chan_handle_t s_i2s_rx_chan = NULL;
+static esp_ldo_channel_handle_t s_vo4_ldo = NULL; // 3.3V rail: ST7703 panel + SD card
 
 static const char *TAG = "BSP_P4_EVAL";
 
@@ -43,6 +44,9 @@ static esp_err_t init_backlight(void) {
     return ret;
 
   // The 'channel' links the timer with a physical pin (GPIO).
+  // The 4B board's backlight is active-low, so the LEDC output is inverted
+  // (matching Waveshare's BSP): duty 1023 + output_invert drives the pin LOW =
+  // full brightness. Without the invert the panel stays dark.
   const ledc_channel_config_t bkg_chan = {
       .gpio_num = LCD_BACKLIGHT_GPIO,
       .speed_mode = LEDC_LOW_SPEED_MODE,
@@ -50,7 +54,8 @@ static esp_err_t init_backlight(void) {
       .intr_type = LEDC_INTR_DISABLE,
       .timer_sel = LEDC_TIMER_1,
       .duty = 1023, // Maximum value (100% brightness)
-      .hpoint = 0};
+      .hpoint = 0,
+      .flags.output_invert = 1};
   return ledc_channel_config(&bkg_chan);
 }
 
@@ -70,6 +75,22 @@ static esp_err_t enable_dsi_phy_power(esp_ldo_channel_handle_t *chan) {
   return esp_ldo_acquire_channel(&ldo_cfg, chan);
 }
 
+/**
+ * PANEL/SD POWER (LDO VO4, 3.3V):
+ * The ST7703 panel needs this rail to light up. It is also used by the SD card,
+ * so acquire it once and reuse the handle (the LDO driver rejects a double-acquire).
+ */
+static esp_err_t enable_panel_power_vo4(void) {
+  if (s_vo4_ldo) {
+    return ESP_OK; // already acquired
+  }
+  esp_ldo_channel_config_t ldo_cfg = {
+      .chan_id = PANEL_PWR_LDO_CHAN,
+      .voltage_mv = PANEL_PWR_LDO_VOLTAGE_MV,
+  };
+  return esp_ldo_acquire_channel(&ldo_cfg, &s_vo4_ldo);
+}
+
 esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
   if (handles == NULL)
     return ESP_ERR_INVALID_ARG;
@@ -80,13 +101,18 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
   if (ret != ESP_OK)
     return ret;
 
+  // 1b. Panel power (VO4 / 3.3V): the ST7703 needs this rail or it stays dark.
+  ret = enable_panel_power_vo4();
+  if (ret != ESP_OK)
+    return ret;
+
   // 2. Backlight: To make the panel visible.
   ret = init_backlight();
   if (ret != ESP_OK)
     return ret;
 
   // 3. MIPI DSI Bus: Configures the physical layer (lanes, speed).
-  ESP_LOGI(TAG, "Configuring MIPI DSI bus at 1000 Mbps...");
+  ESP_LOGI(TAG, "Configuring MIPI DSI bus at %d Mbps...", LCD_BITRATE_MBPS);
   esp_lcd_dsi_bus_handle_t mipi_dsi_bus = NULL;
   esp_lcd_dsi_bus_config_t bus_config = {
       .bus_id = 0,
@@ -99,7 +125,7 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
     return ret;
 
   // 4. DBI IO: Used to send initialization commands to the internal
-  // display controller (EK79007) over the DSI bus.
+  // display controller (ST7703) over the DSI bus.
   esp_lcd_panel_io_handle_t io_handle = NULL;
   esp_lcd_dbi_io_config_t dbi_config = {
       .virtual_channel = 0,
@@ -111,13 +137,13 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
     return ret;
   handles->io_handle = io_handle;
 
-  // 5. LCD Panel: We define the DPI timings (Sync, Porch, Pixel clock).
-  ESP_LOGI(TAG, "Initializing EK79007 controller and DPI timings...");
+  // 5. LCD Panel: ST7703 DPI timings (720x720 @ 60Hz, 38MHz DPI clock).
+  ESP_LOGI(TAG, "Initializing ST7703 controller and DPI timings...");
   esp_lcd_dpi_panel_config_t dpi_config =
-      EK79007_1024_600_PANEL_60HZ_CONFIG_CF(LCD_COLOR_FMT_RGB565);
+      ST7703_720_720_PANEL_60HZ_DPI_CONFIG(LCD_COLOR_PIXEL_FORMAT_RGB565);
   dpi_config.num_fbs = 1;
 
-  ek79007_vendor_config_t vendor_config = {
+  st7703_vendor_config_t vendor_config = {
       .mipi_config =
           {
               .dsi_bus = mipi_dsi_bus,
@@ -132,7 +158,7 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
   };
 
   esp_lcd_panel_handle_t panel_handle = NULL;
-  ret = esp_lcd_new_panel_ek79007(io_handle, &lcd_dev_config, &panel_handle);
+  ret = esp_lcd_new_panel_st7703(io_handle, &lcd_dev_config, &panel_handle);
   if (ret != ESP_OK)
     return ret;
 
@@ -176,10 +202,10 @@ esp_err_t bsp_p4_init_hardware(bsp_p4_handles_t *handles) {
   esp_lcd_touch_config_t tp_cfg = {
       .x_max = LCD_H_RES,
       .y_max = LCD_V_RES,
-      .rst_gpio_num = GPIO_NUM_NC,
+      .rst_gpio_num = TOUCH_RESET_GPIO,
       .int_gpio_num = GPIO_NUM_NC,
       .levels = {.reset = 0, .interrupt = 0},
-      .flags = {.swap_xy = 0, .mirror_x = 1, .mirror_y = 1},
+      .flags = {.swap_xy = 0, .mirror_x = 0, .mirror_y = 0},
   };
 
   esp_lcd_touch_handle_t touch_handle = NULL;
@@ -303,14 +329,9 @@ esp_err_t bsp_sdcard_mount(void) {
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
   host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
 
-  // Power control for SD Card on the P4-EV-Board
-  esp_ldo_channel_config_t ldo_sdc_config = {
-      .chan_id = 4,
-      .voltage_mv = 3300,
-  };
-  esp_ldo_channel_handle_t sd_ldo_handle = NULL;
-  if (esp_ldo_acquire_channel(&ldo_sdc_config, &sd_ldo_handle) != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to acquire LDO for SD Card");
+  // SD card shares the 3.3V VO4 rail already powered for the panel.
+  if (enable_panel_power_vo4() != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to acquire LDO VO4 for SD Card");
     return ESP_FAIL;
   }
 
@@ -327,10 +348,6 @@ esp_err_t bsp_sdcard_mount(void) {
   sdmmc_card_t *card;
   esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config,
                                           &mount_config, &card);
-  if (ret != ESP_OK) {
-    if (sd_ldo_handle) {
-      esp_ldo_release_channel(sd_ldo_handle);
-    }
-  }
+  // Do not release VO4 on failure: the panel still needs this rail.
   return ret;
 }
