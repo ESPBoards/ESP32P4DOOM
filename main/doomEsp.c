@@ -38,6 +38,50 @@ static uint16_t *global_frame_buffer;
 static ppa_client_handle_t ppa_client;
 static bsp_p4_handles_t g_bsp_handles;
 
+// --- Optional on-screen FPS counter (set to 0 to disable) ---
+#define DOOM_SHOW_FPS 1
+
+#if DOOM_SHOW_FPS
+// Minimal 5x7 font, digits 0-9.
+static const uint8_t fps_font[10][7] = {
+    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, // 0
+    {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E}, // 1
+    {0x0E, 0x11, 0x01, 0x06, 0x08, 0x10, 0x1F}, // 2
+    {0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E}, // 3
+    {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02}, // 4
+    {0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E}, // 5
+    {0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E}, // 6
+    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}, // 7
+    {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}, // 8
+    {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C}, // 9
+};
+
+// Draw the FPS value top-left onto the RGB565 framebuffer (after the PPA blit).
+static void draw_fps_overlay(uint16_t *fb, int fps) {
+  const int scale = 3, ox = 10, oy = 10;
+  char buf[6];
+  int n = snprintf(buf, sizeof(buf), "%d", fps > 9999 ? 9999 : fps);
+  int cell = (5 + 1) * scale; // 5px glyph + 1px gap
+  int bw = n * cell + 6, bh = 7 * scale + 6;
+  for (int y = oy - 3; y < oy - 3 + bh; y++) // dark backing box for legibility
+    for (int x = ox - 3; x < ox - 3 + bw; x++)
+      if (x >= 0 && x < LCD_H_RES && y >= 0 && y < LCD_V_RES)
+        fb[y * LCD_H_RES + x] = 0x0000;
+  for (int i = 0; i < n; i++) { // yellow digits
+    const uint8_t *g = fps_font[buf[i] - '0'];
+    for (int ry = 0; ry < 7; ry++)
+      for (int rx = 0; rx < 5; rx++)
+        if (g[ry] & (1 << (4 - rx)))
+          for (int sy = 0; sy < scale; sy++)
+            for (int sx = 0; sx < scale; sx++) {
+              int x = ox + i * cell + rx * scale + sx, y = oy + ry * scale + sy;
+              if (x >= 0 && x < LCD_H_RES && y >= 0 && y < LCD_V_RES)
+                fb[y * LCD_H_RES + x] = 0xFFE0;
+            }
+  }
+}
+#endif
+
 // Draw hook for doomgeneric
 void p4_doom_draw_frame(const uint32_t *buffer) {
   // Directly copy the native RGB565 buffer requested from doomgeneric
@@ -69,6 +113,23 @@ void p4_doom_draw_frame(const uint32_t *buffer) {
   };
 
   ppa_do_scale_rotate_mirror(ppa_client, &srm_config);
+
+#if DOOM_SHOW_FPS
+  static uint32_t fps_frames = 0;
+  static uint64_t fps_last_us = 0;
+  static int fps_value = 0;
+  fps_frames++;
+  uint64_t now_us = esp_timer_get_time();
+  if (fps_last_us == 0)
+    fps_last_us = now_us;
+  if (now_us - fps_last_us >= 500000) { // refresh twice a second
+    fps_value = (int)(fps_frames * 1000000ULL / (now_us - fps_last_us));
+    fps_frames = 0;
+    fps_last_us = now_us;
+  }
+  draw_fps_overlay(global_frame_buffer, fps_value);
+#endif
+
   esp_cache_msync(global_frame_buffer, LCD_H_RES * LCD_V_RES * 2,
                   ESP_CACHE_MSYNC_FLAG_DIR_C2M);
 }
