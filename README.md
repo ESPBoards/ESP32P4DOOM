@@ -3,14 +3,20 @@
 ![DOOM](https://img.shields.io/badge/Port-DOOM-orange.svg)
 ![ESP-IDF](https://img.shields.io/badge/Framework-ESP--IDF%20v5.5-blue.svg)
 
-A complete **independent bare-metal** DOOM port for the **ESP32-P4** microcontroller. Unlike other versions, this project is fully decoupled from official vendor BSP components, implementing its own lean hardware abstraction layer for maximum performance and control.
+A complete **independent bare-metal** DOOM port for the **ESP32-P4**, targeting the **Waveshare ESP32-P4-WIFI6-Touch-LCD-4B** (720×720 ST7703 touch display). Unlike other versions, this project is fully decoupled from official vendor BSP components, implementing its own lean hardware abstraction layer for maximum performance and control.
+
+<p align="center">
+  <img src="images/in-game.jpeg" width="49%" alt="DOOM running on the Waveshare ESP32-P4-WIFI6-Touch-LCD-4B" />
+  <img src="images/menu.jpeg" width="49%" alt="DOOM menu with the on-screen touch controls" />
+</p>
 
 ## Key Improvements
 - **Decoupled Architecture**: Removed dependency on `esp32_p4_function_ev_board`. All hardware drivers (I2C, I2S, SDMMC) are implemented natively in `bsp_p4_eval.c`.
 - **SD Card WAD Loading**: Full support for loading `.wad` files from a MicroSD card. The system automatically searches both internal SPIFFS and the SD card.
-- **PPA Hardware Scaling**: Internal `320x200` rendering upscaled to `1024x600` MIPI DSI display via the ESP32-P4's **Pixel Processing Accelerator**, freeing the CPU for game logic.
+- **PPA Hardware Scaling**: Internal `320x200` rendering upscaled to the `720x720` MIPI DSI display (4:3 letterbox) via the ESP32-P4's **Pixel Processing Accelerator**, freeing the CPU for game logic.
+- **On-Screen Touch Controls**: GT911 touch buttons (move / turn / fire, plus use & menu) in the bottom band — fully playable without a keyboard.
 - **Micro-Mixer Audio**: A dedicated 16-bit PCM Software Mixer broadcasting over I2S to the onboard ES8311 codec for high-fidelity SFX.
-- **USB HID Support**: Direct plug-and-play support for standard USB keyboards.
+- **USB HID Support**: Optional plug-and-play support for standard USB keyboards.
 
 ## Features
 - **Project Structure**: Cleaned and renamed entry point to `main.c`.
@@ -32,8 +38,12 @@ The following features are currently missing from this port:
 - **Music**
 
 ## Requirements
-* ESP32-P4-Function-EV-Board (or custom P4 hardware with similar pinout).
-* USB Keyboard (connected via USB-H port).
+* Waveshare ESP32-P4-WIFI6-Touch-LCD-4B (720×720 ST7703 panel, GT911 touch).
+* USB keyboard optional — on-screen touch controls are built in.
+
+**Where to buy:** [Waveshare (official)](https://www.waveshare.com/esp32-p4-wifi6-touch-lcd-4b.htm) · [AliExpress](https://s.click.aliexpress.com/e/_c3288v03) · [Amazon](https://amzn.to/3RvqoFg)
+
+> The AliExpress and Amazon links are affiliate links that support the project at no extra cost to you. As an Amazon Associate I earn from qualifying purchases.
 
 ## Build and Flashing
 1. **WAD Location**: Place your `.wad` files on the SD card or flash them to the `spiffs` partition.
@@ -49,6 +59,8 @@ If you are interested in embedded systems, ESP-IDF development, or want to discu
 * 👔 [Alejandro Villegas Alonso on LinkedIn](https://www.linkedin.com/in/alejandro-villegas-alonso-825041b1)
 
 ## Credits and Acknowledgements
+* **Original ESP32-P4 port**: by Alejandro Villegas Alonso (see above).
+* **Waveshare 4B port & touch controls**: adapted by [ESPBoards](https://espboards.dev).
 * **[doomgeneric](https://github.com/ozkl/doomgeneric)**: The portable engine core by *ozkl*.
 * **[id Software](https://github.com/id-Software/DOOM)**: The original legends of gaming.
 * **[Espressif Systems](https://github.com/espressif)**: For the powerful P4 chip and IDF framework.

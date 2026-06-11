@@ -1,3 +1,3 @@
-idf_component_register(SRCS "main.c" "bsp_p4_eval.c" "doomEsp.c" "doomEsp_sound.c"
-                       PRIV_REQUIRES esp_lcd esp_lcd_touch esp_driver_ppa esp_timer esp_lcd_ek79007 esp_lcd_touch_gt911 spiffs doomgeneric vfs usb esp_codec_dev driver fatfs esp_mm 
+idf_component_register(SRCS "main.c" "bsp_p4_eval.c" "doomEsp.c" "doomEsp_sound.c" "doomEsp_touch.c"
+                       PRIV_REQUIRES esp_lcd esp_lcd_touch esp_driver_ppa esp_timer esp_lcd_st7703 esp_lcd_touch_gt911 spiffs doomgeneric vfs usb esp_codec_dev driver fatfs esp_mm
                        INCLUDE_DIRS "")

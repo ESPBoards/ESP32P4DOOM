@@ -1,4 +1,5 @@
 #include "doomEsp.h"
+#include "doomEsp_touch.h"
 #include "doomgeneric.h"
 #include "doomkeys.h"
 #include "driver/ppa.h"
@@ -24,6 +25,13 @@ char doomEsp_savedir[32] = "/spiffs";
 #define DOOM_W 320
 #define DOOM_H 200
 
+// Render DOOM's 320x200 into a top-aligned 4:3 region (720x540, scale 2.25/2.7,
+// which reproduces DOOM's intended pixel aspect). The freed bottom 180px band
+// (y 540..720) holds the on-screen touch controls (see doomEsp_touch.c).
+#define DOOM_DEST_W 720
+#define DOOM_DEST_H 540
+#define DOOM_DEST_Y 0
+
 // Buffers
 static uint16_t *doom_rb565;
 static uint16_t *global_frame_buffer;
@@ -38,8 +46,8 @@ void p4_doom_draw_frame(const uint32_t *buffer) {
   esp_cache_msync(doom_rb565, DOOM_W * DOOM_H * 2,
                   ESP_CACHE_MSYNC_FLAG_DIR_C2M);
 
-  float scale_x = (float)LCD_H_RES / (float)DOOM_W;
-  float scale_y = (float)LCD_V_RES / (float)DOOM_H;
+  float scale_x = (float)DOOM_DEST_W / (float)DOOM_W; // 2.25
+  float scale_y = (float)DOOM_DEST_H / (float)DOOM_H; // 2.7
 
   ppa_srm_oper_config_t srm_config = {
       .in = {.buffer = doom_rb565,
@@ -52,6 +60,8 @@ void p4_doom_draw_frame(const uint32_t *buffer) {
               .buffer_size = LCD_H_RES * LCD_V_RES * 2,
               .pic_w = LCD_H_RES,
               .pic_h = LCD_V_RES,
+              .block_offset_x = 0,
+              .block_offset_y = DOOM_DEST_Y,
               .srm_cm = PPA_SRM_COLOR_MODE_RGB565},
       .rotation_angle = PPA_SRM_ROTATION_ANGLE_0,
       .scale_x = scale_x,
@@ -104,6 +114,12 @@ static void queue_doom_key(unsigned char key, int pressed) {
     return;
   doom_key_event_t ev = {.pressed = pressed, .key = key};
   xQueueSend(doom_key_queue, &ev, 0);
+}
+
+// Public entry so other input sources (on-screen touch controls) can feed the
+// same key queue the USB keyboard path uses.
+void doomEsp_QueueKey(unsigned char key, int pressed) {
+  queue_doom_key(key, pressed);
 }
 
 // USB HID Host Callback
@@ -244,6 +260,11 @@ void doomEsp_Start(bsp_p4_handles_t bsp_handles, uint16_t *frame_buffer) {
   global_frame_buffer = frame_buffer;
   g_bsp_handles = bsp_handles;
 
+  // Black out the whole panel once; the scaler only writes the 720x540 center.
+  memset(global_frame_buffer, 0, LCD_H_RES * LCD_V_RES * 2);
+  esp_cache_msync(global_frame_buffer, LCD_H_RES * LCD_V_RES * 2,
+                  ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
   // 0. Keyboard Queue
   doom_key_queue = xQueueCreate(32, sizeof(doom_key_event_t));
 
@@ -282,6 +303,9 @@ void doomEsp_Start(bsp_p4_handles_t bsp_handles, uint16_t *frame_buffer) {
 
   // Initialize Sound Engine
   doomEsp_SoundInit();
+
+  // On-screen touch controls (thumbstick + FIRE/USE/ESC/ENT) in the bottom band.
+  doomEsp_TouchInit(g_bsp_handles.touch_handle, global_frame_buffer);
 
   // 3.5 Initialize SD Card (optional)
   char *iwad_path = "/spiffs/doom1.wad"; // default IWAD
